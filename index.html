@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Mapa Operativo — Alcaldías CDMX</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Encode+Sans+Condensed:wght@400;600;700&display=swap" rel="stylesheet"/>
+<style>
+* { box-sizing:border-box; margin:0; padding:0; }
+html, body { height:100%; width:100%; overflow:hidden; }
+body { font-family:'Encode Sans Condensed',sans-serif; background:#F4F5F7; display:flex; flex-direction:column; }
+
+header { background:#FFFFFF; border-bottom:2px solid #DDE1E7; padding:7px 14px; display:flex; align-items:center; justify-content:space-between; flex-shrink:0; gap:10px; min-height:44px; }
+.h-titulo { font-size:14px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:#1A1D23; }
+.h-sub    { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#7A8090; text-transform:uppercase; letter-spacing:.06em; margin-top:1px; }
+.leyenda  { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+.pill     { display:flex; align-items:center; gap:4px; padding:3px 9px 3px 7px; border-radius:20px; font-size:10px; font-weight:600; letter-spacing:.04em; border:1.5px solid transparent; cursor:pointer; transition:opacity .15s; user-select:none; }
+.pill.off { opacity:.28; }
+.pill-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+
+.body  { display:flex; flex:1; overflow:hidden; min-height:0; }
+#map   { flex:1; height:100%; }
+
+.sidebar    { width:210px; flex-shrink:0; background:#FFFFFF; border-left:1px solid #DDE1E7; display:flex; flex-direction:column; overflow:hidden; }
+.sb-bloque  { padding:10px 12px; border-bottom:1px solid #DDE1E7; }
+.sb-label   { font-size:9px; font-weight:700; letter-spacing:.12em; text-transform:uppercase; color:#7A8090; margin-bottom:7px; }
+.stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:5px; }
+.stat-box   { background:#F4F5F7; border-radius:5px; padding:8px 6px; text-align:center; }
+.stat-num   { font-family:'IBM Plex Mono',monospace; font-size:22px; font-weight:500; line-height:1; }
+.stat-lbl   { font-size:8px; color:#7A8090; margin-top:2px; letter-spacing:.05em; text-transform:uppercase; }
+.bar-row    { margin-bottom:7px; }
+.bar-meta   { display:flex; justify-content:space-between; font-size:10px; margin-bottom:2px; }
+.bar-pct    { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#7A8090; }
+.bar-track  { height:6px; background:#DDE1E7; border-radius:3px; overflow:hidden; }
+.bar-fill   { height:100%; border-radius:3px; transition:width .5s ease; }
+.alc-list   { flex:1; overflow-y:auto; padding:6px 12px; display:flex; flex-direction:column; gap:2px; min-height:0; }
+.alc-item   { display:flex; align-items:center; gap:6px; padding:5px; border-radius:4px; font-size:10px; background:#F4F5F7; cursor:pointer; transition:background .1s; }
+.alc-item:hover { background:#DDE1E7; }
+.alc-dot    { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+.alc-nom    { font-weight:600; color:#1A1D23; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+.alc-pct    { font-family:'IBM Plex Mono',monospace; font-size:9px; color:#7A8090; flex-shrink:0; }
+.ts         { padding:8px 12px; font-family:'IBM Plex Mono',monospace; font-size:8px; color:#7A8090; border-top:1px solid #DDE1E7; flex-shrink:0; }
+
+.leaflet-tooltip { background:#1A1D23 !important; border:none !important; border-radius:6px !important; color:#F4F5F7 !important; font-family:'IBM Plex Mono',monospace !important; font-size:10px !important; padding:9px 12px !important; box-shadow:0 4px 16px rgba(0,0,0,.3) !important; pointer-events:none; min-width:165px; }
+.leaflet-tooltip::before { display:none !important; }
+.tt-alc   { font-size:12px; font-weight:500; margin-bottom:6px; }
+.tt-row   { display:flex; gap:7px; align-items:center; margin-top:3px; }
+.tt-key   { color:#7A8090; font-size:8px; letter-spacing:.08em; text-transform:uppercase; width:58px; flex-shrink:0; }
+.tt-val   { color:#E8EAF0; font-size:10px; }
+.tt-badge { display:inline-block; padding:1px 8px; border-radius:10px; font-size:8px; font-weight:700; }
+.tt-divider { border-top:1px solid #333; margin-top:6px; padding-top:6px; display:flex; gap:4px; }
+.tt-mini-box { flex:1; text-align:center; }
+.tt-mini-n   { font-size:11px; font-weight:500; }
+.tt-mini-l   { font-size:7px; color:#7A8090; text-transform:uppercase; letter-spacing:.05em; }
+.tt-bar-track { height:3px; background:#333; border-radius:2px; margin-top:5px; overflow:hidden; }
+.tt-bar-fill  { height:100%; border-radius:2px; }
+
+#loader { position:fixed; inset:0; background:#F4F5F7; z-index:9999; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; }
+.ld-title { font-size:15px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; }
+.ld-msg   { font-family:'IBM Plex Mono',monospace; font-size:10px; color:#7A8090; }
+.spinner  { width:28px; height:28px; border:3px solid #DDE1E7; border-top-color:#2980B9; border-radius:50%; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div id="loader">
+  <div class="spinner"></div>
+  <div class="ld-title">Mapa Operativo</div>
+  <div class="ld-msg" id="ld-msg">Iniciando…</div>
+</div>
+
+<header>
+  <div>
+    <div class="h-titulo">Mapa Operativo — CDMX</div>
+    <div class="h-sub">Alcaldías · Muestreo Seguridad y Limpieza</div>
+  </div>
+  <div class="leyenda" id="leyenda"></div>
+</header>
+
+<div class="body">
+  <div id="map"></div>
+  <div class="sidebar">
+    <div class="sb-bloque">
+      <div class="sb-label">Totales</div>
+      <div class="stats-grid" id="stats-grid"></div>
+    </div>
+    <div class="sb-bloque">
+      <div class="sb-label">Avance</div>
+      <div id="bars"></div>
+    </div>
+    <div class="sb-bloque" style="flex:1;overflow:hidden;display:flex;flex-direction:column;padding-bottom:0;">
+      <div class="sb-label">Alcaldías</div>
+      <div class="alc-list" id="alc-list"></div>
+    </div>
+    <div class="ts" id="ts">—</div>
+  </div>
+</div>
+
+<script>
+// ── Configuración ────────────────────────────────────────────────────────────
+const CFG = {
+  CSV_URL:     "https://docs.google.com/spreadsheets/d/e/2PACX-1vQ3ss6oX_SByz7LCfHpjwuK8eZKmcToHd6zdAglF9QgBzh9aRx1cNQQrjXiviauxzR0Uj3D5YpHIa_v/pub?gid=0&single=true&output=csv",
+  GEOJSON_URL: "https://digitalact4.github.io/mapa-seguridad/alcaldias_cdmx.geojson",
+  REFRESH_MIN: 5,
+  COLORES: {
+    "COMPLETA":   "#27AE60",
+    "EN PROCESO": "#2980B9",
+    "PENDIENTE":  "#E0E0E0",
+  },
+  BORDES: {
+    "COMPLETA":   "#1E8449",
+    "EN PROCESO": "#1F618D",
+    "PENDIENTE":  "#AAAAAA",
+  },
+  ORDEN: ["COMPLETA", "EN PROCESO", "PENDIENTE"],
+};
+
+// ── Estado ───────────────────────────────────────────────────────────────────
+let map, geoLayer, geoData = null;
+let operativo = {};
+let filtros = new Set(CFG.ORDEN);
+
+// ── Normalizar nombre de alcaldía ────────────────────────────────────────────
+// Convierte "Álvaro Obregón" → "ALVARO OBREGON" para comparar
+function norm(s) {
+  return String(s).toUpperCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\./g, '');
+}
+
+// ── Mapa base ────────────────────────────────────────────────────────────────
+function initMap() {
+  map = L.map("map", { center:[19.36, -99.18], zoom:10 });
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png",
+    { attribution:"©OpenStreetMap ©CARTO", maxZoom:19, subdomains:"abcd" }).addTo(map);
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/light_only_labels/{z}/{x}/{y}{r}.png",
+    { attribution:"", maxZoom:19, subdomains:"abcd", pane:"overlayPane" }).addTo(map);
+}
+
+// ── Carga CSV desde Google Sheets ────────────────────────────────────────────
+// Agrega por alcaldía: si todas las secciones son COMPLETA → COMPLETA
+// Si alguna es EN PROCESO o mezcla → EN PROCESO
+// Si todas son PENDIENTE → PENDIENTE
+function cargarCSV() {
+  return new Promise((res, rej) => {
+    ld("Leyendo Google Sheet…");
+    Papa.parse(CFG.CSV_URL, {
+      download: true, header: true, skipEmptyLines: true,
+      complete(r) {
+        // Agrupar filas por alcaldía
+        const grupos = {};
+        r.data.forEach(row => {
+          const alc = norm(row["ALCALDIA NOMBRE"] || row["ALCALDIA"] || row["Municipio_INE"] || "");
+          const est = String(row["ESTATUS"] || "").trim().toUpperCase();
+          if (!alc) return;
+          if (!grupos[alc]) grupos[alc] = { total:0, COMPLETA:0, "EN PROCESO":0, PENDIENTE:0, nombre: (row["ALCALDIA NOMBRE"]||"").trim() };
+          grupos[alc].total++;
+          if (grupos[alc][est] !== undefined) grupos[alc][est]++;
+        });
+
+        // Determinar estatus agregado por alcaldía
+        operativo = {};
+        Object.entries(grupos).forEach(([alc, g]) => {
+          let estatus;
+          if (g.COMPLETA === g.total)                        estatus = "COMPLETA";
+          else if (g.COMPLETA > 0 || g["EN PROCESO"] > 0)   estatus = "EN PROCESO";
+          else                                                estatus = "PENDIENTE";
+
+          operativo[alc] = {
+            ESTATUS:    estatus,
+            TOTAL:      g.total,
+            COMPLETA:   g.COMPLETA,
+            EN_PROCESO: g["EN PROCESO"],
+            PENDIENTE:  g.PENDIENTE,
+            PCT:        Math.round(g.COMPLETA / g.total * 100),
+            NOMBRE:     g.nombre,
+          };
+        });
+        res();
+      },
+      error: rej,
+    });
+  });
+}
+
+// ── Carga GeoJSON de alcaldías ───────────────────────────────────────────────
+async function cargarGeoJSON() {
+  ld("Cargando geometrías…");
+  const r = await fetch(CFG.GEOJSON_URL);
+  if (!r.ok) throw new Error("No se pudo cargar el GeoJSON: " + CFG.GEOJSON_URL);
+  geoData = await r.json();
+}
+
+// ── Dibuja el mapa ───────────────────────────────────────────────────────────
+function dibujar() {
+  if (geoLayer) { map.removeLayer(geoLayer); geoLayer = null; }
+  if (!geoData) return;
+
+  geoLayer = L.geoJSON(geoData, {
+    style(f) {
+      const key   = norm(f.properties.ALCALDIA_N || "");
+      const dato  = operativo[key];
+      const est   = dato?.ESTATUS;
+      const activo = est && filtros.has(est);
+      return {
+        fillColor:   activo ? CFG.COLORES[est]  : "#E8E8E8",
+        fillOpacity: activo ? (est === "PENDIENTE" ? 0.55 : 0.82) : 0.3,
+        color:       activo ? CFG.BORDES[est]   : "#BBBBBB",
+        weight:      1.8,
+        opacity:     1,
+      };
+    },
+    onEachFeature(f, layer) {
+      const key  = norm(f.properties.ALCALDIA_N || "");
+      const dato = operativo[key] || {};
+      const alc  = (f.properties.ALCALDIA_N || "").toUpperCase();
+      const est  = dato.ESTATUS || "SIN DATOS";
+      const color = CFG.COLORES[est] || "#999";
+      const pct   = dato.PCT   || 0;
+      const total = dato.TOTAL || 0;
+
+      layer.bindTooltip(`
+        <div class="tt-alc">${alc}</div>
+        <div class="tt-row">
+          <span class="tt-key">Estatus</span>
+          <span class="tt-badge" style="background:${color}33;color:${color};border:1px solid ${color}">${est}</span>
+        </div>
+        <div class="tt-row"><span class="tt-key">Secciones</span><span class="tt-val">${total}</span></div>
+        <div class="tt-row"><span class="tt-key">% Completa</span><span class="tt-val">${pct}%</span></div>
+        <div class="tt-bar-track"><div class="tt-bar-fill" style="width:${pct}%;background:${color}"></div></div>
+        <div class="tt-divider">
+          <div class="tt-mini-box"><div class="tt-mini-n" style="color:#27AE60">${dato.COMPLETA||0}</div><div class="tt-mini-l">Completa</div></div>
+          <div class="tt-mini-box"><div class="tt-mini-n" style="color:#2980B9">${dato.EN_PROCESO||0}</div><div class="tt-mini-l">En proceso</div></div>
+          <div class="tt-mini-box"><div class="tt-mini-n" style="color:#AAAAAA">${dato.PENDIENTE||0}</div><div class="tt-mini-l">Pendiente</div></div>
+        </div>
+      `, { sticky:true, opacity:1 });
+
+      layer.on("mouseover", () => layer.setStyle({ fillOpacity:1, weight:2.8 }));
+      layer.on("mouseout",  () => geoLayer && geoLayer.resetStyle(layer));
+      layer.on("click",     () => {
+        try { map.fitBounds(layer.getBounds(), { maxZoom:13, padding:[40,40] }); } catch(e) {}
+      });
+    }
+  }).addTo(map);
+
+  try { map.fitBounds(geoLayer.getBounds(), { padding:[20,20] }); } catch(e) {}
+}
+
+// ── Sidebar ──────────────────────────────────────────────────────────────────
+function actualizarSidebar() {
+  const datos = Object.values(operativo);
+  const total = datos.length;
+  const conteo = {};
+  CFG.ORDEN.forEach(e => conteo[e] = 0);
+  datos.forEach(d => { if (conteo[d.ESTATUS] !== undefined) conteo[d.ESTATUS]++; });
+
+  // Stats
+  const sg = document.getElementById("stats-grid");
+  sg.innerHTML = `<div class="stat-box"><div class="stat-num" style="color:#1A1D23">${total}</div><div class="stat-lbl">Alcaldías</div></div>`;
+  CFG.ORDEN.forEach(est => {
+    const c = CFG.COLORES[est], b = CFG.BORDES[est];
+    sg.insertAdjacentHTML("beforeend",
+      `<div class="stat-box"><div class="stat-num" style="color:${b}">${conteo[est]}</div><div class="stat-lbl">${est}</div></div>`);
+  });
+
+  // Barras
+  const bars = document.getElementById("bars");
+  bars.innerHTML = "";
+  CFG.ORDEN.forEach(est => {
+    const c = CFG.COLORES[est], b = CFG.BORDES[est];
+    const n = conteo[est], pct = total > 0 ? Math.round(n / total * 100) : 0;
+    bars.insertAdjacentHTML("beforeend", `
+      <div class="bar-row">
+        <div class="bar-meta">
+          <span style="color:${b};font-weight:700;font-size:10px">${est}</span>
+          <span class="bar-pct">${n} · ${pct}%</span>
+        </div>
+        <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${c}"></div></div>
+      </div>`);
+  });
+
+  // Lista alcaldías ordenada por estatus
+  const list = document.getElementById("alc-list");
+  list.innerHTML = "";
+  const ordenado = Object.entries(operativo).sort(([,a],[,b]) => {
+    const ia = CFG.ORDEN.indexOf(a.ESTATUS), ib = CFG.ORDEN.indexOf(b.ESTATUS);
+    return (ia===-1?99:ia) - (ib===-1?99:ib);
+  });
+  ordenado.filter(([,d]) => filtros.has(d.ESTATUS)).forEach(([key, d]) => {
+    const color  = CFG.COLORES[d.ESTATUS] || "#999";
+    const nombre = d.NOMBRE || key;
+    const item   = document.createElement("div");
+    item.className = "alc-item";
+    item.innerHTML = `<div class="alc-dot" style="background:${color};border:1.5px solid ${CFG.BORDES[d.ESTATUS]||'#999'}"></div><span class="alc-nom">${nombre}</span><span class="alc-pct">${d.PCT}%</span>`;
+    item.addEventListener("click", () => {
+      if (!geoLayer) return;
+      geoLayer.eachLayer(layer => {
+        if (norm(layer.feature?.properties?.ALCALDIA_N||"") === key) {
+          try { map.fitBounds(layer.getBounds(), { maxZoom:13, padding:[40,40] }); } catch(e) {}
+        }
+      });
+    });
+    list.appendChild(item);
+  });
+
+  const now = new Date();
+  document.getElementById("ts").textContent =
+    `Act. ${now.toLocaleDateString("es-MX")} ${now.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"})}`;
+}
+
+// ── Leyenda / filtros ────────────────────────────────────────────────────────
+function initLeyenda() {
+  const el = document.getElementById("leyenda");
+  CFG.ORDEN.forEach(est => {
+    const c = CFG.COLORES[est], b = CFG.BORDES[est];
+    const pill = document.createElement("div");
+    pill.className = "pill";
+    pill.style.cssText = `background:${c}33;color:${b};border-color:${b}`;
+    pill.innerHTML = `<div class="pill-dot" style="background:${c};border:1.5px solid ${b}"></div>${est}`;
+    pill.addEventListener("click", () => {
+      if (filtros.has(est)) { filtros.delete(est); pill.classList.add("off"); }
+      else { filtros.add(est); pill.classList.remove("off"); }
+      dibujar(); actualizarSidebar();
+    });
+    el.appendChild(pill);
+  });
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function ld(msg) { document.getElementById("ld-msg").textContent = msg; }
+function ocultarLoader() {
+  const el = document.getElementById("loader");
+  el.style.transition = "opacity .4s"; el.style.opacity = "0";
+  setTimeout(() => el.style.display = "none", 400);
+}
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+async function main() {
+  initMap();
+  initLeyenda();
+  try {
+    await cargarCSV();
+    await cargarGeoJSON();
+    dibujar();
+    actualizarSidebar();
+    ocultarLoader();
+  } catch(e) {
+    console.error(e);
+    ld("⚠️ Error al cargar. Abre F12 para detalles.");
+  }
+
+  // Refresco automático: re-lee el CSV cada 5 minutos
+  if (CFG.REFRESH_MIN > 0) {
+    setInterval(async () => {
+      try {
+        await cargarCSV();
+        dibujar();
+        actualizarSidebar();
+      } catch(e) { console.warn("Error en refresco:", e); }
+    }, CFG.REFRESH_MIN * 60_000);
+  }
+}
+
+main();
+</script>
+</body>
+</html>
